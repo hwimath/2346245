@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>구간이 나뉘어진 함수의 정적분(우함수, 기함수)</title>
+  <!-- MathJax 불러오기 (LaTeX 렌더링) -->
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+  <style>
+    body {
+      background-color: #fff;
+      color: #000;
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      font-size: 1.3rem;
+      margin-bottom: 10px;
+    }
+    .hidden {
+      display: none;
+    }
+    .energy-bar {
+      width: 200px;
+      height: 20px;
+      background-color: #ccc;
+      position: relative;
+      margin: 10px 0;
+    }
+    .energy-fill {
+      width: 100%;
+      height: 100%;
+      background-color: #000;
+      transition: width 0.2s linear;
+    }
+    .question-container {
+      border: 1px solid #000;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    .choice-container {
+      margin: 5px 0;
+    }
+    .score-info, .chance-info, .time-info {
+      margin: 5px 0;
+    }
+    .btn {
+      display: inline-block;
+      padding: 5px 10px;
+      margin: 5px;
+      border: 1px solid #000;
+      background: #fff;
+      cursor: pointer;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    #response {
+      margin-top: 10px;
+      white-space: pre-wrap;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>구간이 나뉘어진 함수의 정적분(우함수, 기함수)</h1>
+
+  <!-- 게임 시작 전: 이름 및 난이도 입력 화면 -->
+  <div id="startScreen">
+    <div>
+      <label>이름: <input type="text" id="nameInput" /></label>
+    </div>
+    <div style="margin-top:10px;">
+      난이도 선택:
+      <label><input type="radio" name="difficulty" value="최상" />최상(20초)</label>
+      <label><input type="radio" name="difficulty" value="상" />상(30초)</label>
+      <label><input type="radio" name="difficulty" value="중" />중(40초)</label>
+      <label><input type="radio" name="difficulty" value="하" />하(시간무제한)</label>
+    </div>
+    <div style="margin-top:10px;">
+      <button class="btn" onclick="startGame()">게임 시작</button>
+    </div>
+  </div>
+
+  <!-- 전체 게임 시간 표시 -->
+  <div id="overallTimeDisplay" class="time-info hidden">
+    총 경과 시간: <span id="totalTime">0</span>초
+  </div>
+
+  <!-- 퀴즈 영역 -->
+  <div id="quizContainer" class="hidden">
+    <div class="score-info">점수: <span id="score">0</span></div>
+    <div class="chance-info">남은 기회: <span id="chances">3</span></div>
+    <div id="energyBar" class="energy-bar hidden">
+      <div id="energyFill" class="energy-fill"></div>
+    </div>
+
+    <div id="questionArea" class="question-container"></div>
+
+    <div style="margin-top:10px;">
+      <button id="submitBtn" class="btn" onclick="submitAnswer()" disabled>제출하기</button>
+      <button id="nextBtn" class="btn hidden" onclick="goNextQuestion()">다음 문제</button>
+    </div>
+  </div>
+
+  <!-- 게임 종료 화면 -->
+  <div id="endScreen" class="hidden">
+    <h2>게임 종료</h2>
+    <div>최종 점수: <span id="finalScore"></span></div>
+    <div>총 경과 시간: <span id="finalTime"></span>초</div>
+    <button class="btn" onclick="endlessMode()">무한 랜덤 문제 풀기</button>
+    <button class="btn" onclick="sendScore()">점수전송</button>
+    <div id="response"></div>
+  </div>
+
+  <script>
+    /*******************************************************
+     * 문제 데이터
+     *  - question: 문자열 (수식은 \\(...\\)로 감싸주세요)
+     *  - choices: 보기 배열 (4개)
+     *  - correct: 정답 인덱스(0~3)
+     *******************************************************/
+    const allProblems = [
+      {
+        question: "조건: \\( f(x) = \\begin{cases}x^2 - 1 & x \\le 1\\\\ x - 1 & x > 1\\end{cases}\\) 일 때, \\(\\int_{0}^{2} f(x)\\,dx\\)의 값은?",
+        choices: [
+          "\\(-\\dfrac{1}{6}\\)",
+          "\\(\\dfrac{1}{6}\\)",
+          "\\(0\\)",
+          "\\(-\\dfrac{1}{3}\\)"
+        ],
+        correct: 0
+      },
+      {
+        question: "조건: \\( f(x) = \\begin{cases}-x^2 + 1 & x \\le 1\\\\ x - 1 & x > 1\\end{cases}\\) 일 때, \\(\\int_{0}^{2} f(x)\\,dx\\)의 값은?",
+        choices: [
+          "\\(\\tfrac{2}{3}\\)",
+          "\\(\\tfrac{7}{6}\\)",
+          "\\(\\tfrac{4}{3}\\)",
+          "\\(\\tfrac{1}{2}\\)"
+        ],
+        correct: 1
+      },
+      {
+        question: "조건: \\( f(x) = \\begin{cases}x^2 & x \\le 0\\\\ 2x & x > 0\\end{cases}\\) 일 때, \\(\\int_{-1}^{1} f(x)\\,dx\\)의 값은?",
+        choices: [
+          "\\(1\\)",
+          "\\(\\tfrac{4}{3}\\)",
+          "\\(\\tfrac{5}{3}\\)",
+          "\\(2\\)"
+        ],
+        correct: 1
+      },
+      {
+        question: "조건: \\( f(x) = \\begin{cases}x^2 & x \\le 1\\\\ 2 - x & x > 1\\end{cases}\\) 일 때, \\(\\int_{-2}^{2} f(x)\\,dx\\)의 값은?",
+        choices: [
+          "3",
+          "\\(\\tfrac{7}{2}\\)",
+          "4",
+          "5"
+        ],
+        correct: 1
+      },
+      {
+        question: "조건: \\( f(x) = \\begin{cases}2 & x \\le 0\\\\ -3x + 2 & x > 0\\end{cases}\\) 일 때, \\(\\int_{-1}^{1} x f(x)\\,dx\\)의 값은?",
+        choices: [
+          "-2",
+          "-1",
+          "0",
+          "1"
+        ],
+        correct: 1
+      },
+      {
+        question: "조건: \\( f(x) = \\begin{cases}x & x < 1\\\\ -x + 2 & x \\ge 1\\end{cases}\\) 일 때, \\(\\int_{1}^{3} x f(x-1)\\,dx\\)의 값은?",
+        choices: [
+          "1",
+          "2",
+          "\\(\\tfrac{5}{2}\\)",
+          "3"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{-2}^{1}\\lvert x+1 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "1",
+          "\\(\\tfrac{3}{2}\\)",
+          "2",
+          "\\(\\tfrac{5}{2}\\)"
+        ],
+        correct: 3
+      },
+      {
+        question: "\\(\\int_{0}^{2}\\lvert x - 1 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "1",
+          "\\(\\tfrac{3}{2}\\)",
+          "2",
+          "\\(\\tfrac{5}{2}\\)"
+        ],
+        correct: 0
+      },
+      {
+        question: "\\(\\int_{-1}^{2}\\lvert x - 1 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "2",
+          "\\(\\tfrac{5}{2}\\)",
+          "3",
+          "\\(\\tfrac{7}{2}\\)"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{0}^{3}\\lvert x - 1 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "2",
+          "\\(\\tfrac{5}{2}\\)",
+          "3",
+          "\\(\\tfrac{7}{2}\\)"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{0}^{4}\\lvert x - 1 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "4",
+          "5",
+          "\\(\\tfrac{9}{2}\\)",
+          "6"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{0}^{3}\\lvert x - 2 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "2",
+          "\\(\\tfrac{5}{2}\\)",
+          "3",
+          "\\(\\tfrac{7}{2}\\)"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{0}^{6}\\lvert x - 4 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "8",
+          "9",
+          "10",
+          "11"
+        ],
+        correct: 2
+      },
+      {
+        question: "\\(\\int_{0}^{2}\\lvert x^2 - 1 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "1",
+          "2",
+          "\\(\\tfrac{5}{2}\\)",
+          "3"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{-2}^{2}\\lvert x^2 - 1 \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "3",
+          "4",
+          "\\(\\tfrac{7}{2}\\)",
+          "5"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{0}^{3}\\lvert x(x-2) \\rvert\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "2",
+          "\\(\\tfrac{8}{3}\\)",
+          "3",
+          "\\(\\tfrac{10}{3}\\)"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{-1}^{1} \\bigl(3x^2 + 4\\bigr)\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "8",
+          "9",
+          "10",
+          "12"
+        ],
+        correct: 2
+      },
+      {
+        question: "\\(\\int_{-1}^{1} (x+1)(3x+2)\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "4",
+          "5",
+          "6",
+          "7"
+        ],
+        correct: 2
+      },
+      {
+        question: "\\(\\int_{-1}^{1} (x^2 + x + 1)\\,dx \\; - \\; \\int_{-1}^{1} (x^2 - x + 1)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "-2",
+          "-1",
+          "0",
+          "1"
+        ],
+        correct: 2
+      },
+      {
+        question: "\\(\\int_{-2}^{1} (6x^2 - 4x + 1)\\,dx \\; + \\; \\int_{2}^{1} \\bigl(-6x^2 + 4x -1\\bigr)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "27",
+          "30",
+          "36",
+          "40"
+        ],
+        correct: 2
+      },
+      {
+        // 좌우 대칭 구간으로 단순화
+        question: "\\(\\int_{-1}^{1} (3x^2 + 4x^3 + 5x^4)\\,dx\\)의 값을 구하시오.",
+        choices: [
+          "3",
+          "4",
+          "5",
+          "\\(\\tfrac{9}{2}\\)"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{-2}^{2} \\bigl(3x^2 + |x|\\bigr)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "16",
+          "18",
+          "20",
+          "22"
+        ],
+        correct: 2
+      },
+      {
+        question: "\\(\\int_{-1}^{1} (x^3 + 3x)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "-3",
+          "-1",
+          "0",
+          "1"
+        ],
+        correct: 2
+      },
+      {
+        question: "\\(\\int_{-1}^{1} (x+1)(x^2 - x + 1)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        correct: 2
+      },
+      {
+        question: "\\(\\int_{-2}^{2} (x^3 - 3x^2 - 2x + 4)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "-2",
+          "0",
+          "2",
+          "4"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{-1}^{0} (4x^3 - 2x + 1)\\,dx \\; + \\; \\int_{0}^{1} (4x^3 - 2x + 1)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        correct: 2
+      },
+      {
+        question: "\\(\\int_{-2}^{1} (x^3 + 6x^2 + 2x - 1)\\,dx \\; + \\; \\int_{1}^{2} (x^3 + 6x^2 + 2x - 1)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "24",
+          "28",
+          "30",
+          "32"
+        ],
+        correct: 1
+      },
+      {
+        question: "\\(\\int_{-1}^{0} (1 + 2x + 3x^2 + 4x^3)\\,dx \\; + \\; \\int_{0}^{1} (1 + 2x + 3x^2 + 4x^3)\\,dx\\) 의 값을 구하시오.",
+        choices: [
+          "3",
+          "4",
+          "5",
+          "6"
+        ],
+        correct: 1
+      }
+    ];
+
+    /*******************************************************
+     * 전역 변수들
+     *******************************************************/
+    let shuffledProblems = [];
+    let currentIndex = 0;   // 현재 문제 인덱스
+    let score = 0;          // 점수
+    let chances = 3;        // 남은 기회
+    let difficulty = "";    // 난이도
+    let timeLimit = 0;      // 문제별 제한 시간(초)
+    let intervalId = null;  // 각 문제별 타이머
+    let energyInterval = null;
+    let overallStartTime = 0;   // 전체 게임 시작 시각
+    let totalTimerId = null;    // 전체 경과 시간 계산용
+    let infiniteMode = false;   // 무한 모드 여부
+
+    /*******************************************************
+     * 난이도별 점수/시간 설정
+     *******************************************************/
+    function getScorePerQuestion(diff) {
+      switch(diff) {
+        case "최상": return 20;
+        case "상":   return 15;
+        case "중":   return 13;
+        case "하":   return 10;
+      }
+      return 10;
+    }
+    function getTimeLimit(diff) {
+      switch(diff) {
+        case "최상": return 20;
+        case "상":   return 30;
+        case "중":   return 40;
+        case "하":   return 999999; // 사실상 무제한
+      }
+      return 999999;
+    }
+
+    /*******************************************************
+     * 배열 섞기 (Fisher–Yates)
+     *******************************************************/
+    function shuffleArray(array) {
+      for(let i = array.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i+1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    /*******************************************************
+     * 게임 시작
+     *******************************************************/
+    function startGame() {
+      const nameVal = document.getElementById("nameInput").value.trim();
+      if(!nameVal) {
+        alert("이름을 입력하세요!");
+        return;
+      }
+      const diffRadio = document.querySelector("input[name='difficulty']:checked");
+      if(!diffRadio) {
+        alert("난이도를 선택하세요!");
+        return;
+      }
+      difficulty = diffRadio.value;
+
+      // 화면 전환
+      document.getElementById("startScreen").classList.add("hidden");
+      document.getElementById("quizContainer").classList.remove("hidden");
+      document.getElementById("overallTimeDisplay").classList.remove("hidden");
+
+      // 변수 초기화
+      score = 0;
+      chances = 3;
+      currentIndex = 0;
+      infiniteMode = false;
+      document.getElementById("score").innerText = score;
+      document.getElementById("chances").innerText = chances;
+
+      // 전체 타이머 시작
+      overallStartTime = Date.now();
+      totalTimerId = setInterval(updateTotalTime, 1000);
+
+      // 문제 목록 섞기
+      shuffledProblems = allProblems.slice();
+      shuffleArray(shuffledProblems);
+
+      // 난이도별 시간 제한 설정
+      timeLimit = getTimeLimit(difficulty);
+
+      // 첫 문제 표시
+      showProblem(currentIndex);
+    }
+
+    /*******************************************************
+     * 전체 경과 시간 표시
+     *******************************************************/
+    function updateTotalTime() {
+      const now = Date.now();
+      const diffSec = Math.floor((now - overallStartTime)/1000);
+      document.getElementById("totalTime").innerText = diffSec;
+    }
+
+    /*******************************************************
+     * 문제 표시
+     *******************************************************/
+    function showProblem(idx) {
+      if(idx >= shuffledProblems.length && !infiniteMode) {
+        endGame();
+        return;
+      }
+      let problem = null;
+      if(infiniteMode) {
+        problem = shuffledProblems[Math.floor(Math.random()*shuffledProblems.length)];
+      } else {
+        problem = shuffledProblems[idx];
+      }
+      const questionArea = document.getElementById("questionArea");
+      let html = "<div style='margin-bottom:10px;'>" + problem.question + "</div>";
+      html += "<div>";
+      for(let i=0; i<4; i++){
+        html += "<div class='choice-container'>" +
+                "<label><input type='radio' name='choice' value='"+i+"'/> "+problem.choices[i]+"</label>" +
+                "</div>";
+      }
+      html += "</div>";
+      questionArea.innerHTML = html;
+      // 제출 버튼 활성화 및 다음 문제 버튼 숨김
+      document.getElementById("submitBtn").disabled = false;
+      document.getElementById("nextBtn").classList.add("hidden");
+
+      if(difficulty === "하") {
+        document.getElementById("energyBar").classList.add("hidden");
+      } else {
+        document.getElementById("energyBar").classList.remove("hidden");
+        startEnergyBar();
+      }
+      MathJax.typeset();
+    }
+
+    /*******************************************************
+     * 에너지바(시간 제한) 동작
+     *******************************************************/
+    let currentTime = 0;
+    function startEnergyBar() {
+      if(intervalId) clearInterval(intervalId);
+      if(energyInterval) clearInterval(energyInterval);
+      currentTime = timeLimit;
+      const fillDiv = document.getElementById("energyFill");
+      fillDiv.style.width = "100%";
+      energyInterval = setInterval(()=>{
+        currentTime -= 0.2;
+        if(currentTime <= 0) {
+          clearInterval(energyInterval);
+          timeOut();
+        } else {
+          const ratio = (currentTime / timeLimit)*100;
+          fillDiv.style.width = ratio + "%";
+        }
+      }, 200);
+    }
+
+    // 수정: 시간이 다 되어도 자동으로 다음 문제로 넘어가지 않고,
+    // "시간 초과" 메시지를 보여준 후 사용자가 "다음 문제" 버튼을 눌러야 넘어가도록 함.
+    function timeOut() {
+      chances--;
+      if(chances < 0) chances = 0;
+      document.getElementById("chances").innerText = chances;
+      alert("시간 초과!");
+      // 제출 버튼 비활성화 후 다음 문제 버튼 활성화
+      document.getElementById("submitBtn").disabled = true;
+      document.getElementById("nextBtn").classList.remove("hidden");
+      if(chances === 0){
+        endGame();
+      }
+    }
+
+    /*******************************************************
+     * 답안 제출
+     *******************************************************/
+    function submitAnswer() {
+      const checkedRadio = document.querySelector("input[name='choice']:checked");
+      if(!checkedRadio) {
+        alert("보기를 선택하세요!");
+        return;
+      }
+      // 제출 버튼 비활성화하여 중복 제출 방지
+      document.getElementById("submitBtn").disabled = true;
+      let problem = null;
+      if(infiniteMode) {
+        problem = shuffledProblems[currentIndex];
+      } else {
+        problem = shuffledProblems[currentIndex];
+      }
+      const userAnswer = parseInt(checkedRadio.value, 10);
+      if(energyInterval) clearInterval(energyInterval);
+      const correct = (userAnswer === problem.correct);
+      if(correct) {
+        score += getScorePerQuestion(difficulty);
+        document.getElementById("score").innerText = score;
+        alert("정답입니다!");
+      } else {
+        chances--;
+        if(chances < 0) chances = 0;
+        document.getElementById("chances").innerText = chances;
+        alert("틀렸습니다! 정답: " + (problem.correct+1) + ") " + problem.choices[problem.correct]);
+      }
+      // 정답/오답이 결정된 후에만 다음 문제 버튼 활성화
+      document.getElementById("nextBtn").classList.remove("hidden");
+      if(chances === 0) {
+        endGame();
+      }
+    }
+
+    /*******************************************************
+     * 다음 문제
+     *******************************************************/
+    function goNextQuestion() {
+      if(!infiniteMode){
+        currentIndex++;
+      }
+      showProblem(currentIndex);
+    }
+
+    /*******************************************************
+     * 게임 종료
+     *******************************************************/
+    function endGame() {
+      if(intervalId) clearInterval(intervalId);
+      if(energyInterval) clearInterval(energyInterval);
+      if(totalTimerId) clearInterval(totalTimerId);
+      document.getElementById("quizContainer").classList.add("hidden");
+      document.getElementById("endScreen").classList.remove("hidden");
+      const now = Date.now();
+      const diffSec = Math.floor((now - overallStartTime)/1000);
+      document.getElementById("finalScore").innerText = score;
+      document.getElementById("finalTime").innerText = diffSec;
+    }
+
+    /*******************************************************
+     * 무한 랜덤 문제
+     *******************************************************/
+    function endlessMode(){
+      infiniteMode = true;
+      document.getElementById("endScreen").classList.add("hidden");
+      document.getElementById("quizContainer").classList.remove("hidden");
+      showProblem(currentIndex);
+    }
+
+    /*******************************************************
+     * 점수 전송
+     *******************************************************/
+    function sendScore() {
+      const now = Date.now();
+      const elapsedTime = Math.floor((now - overallStartTime)/1000);
+      const playerName = document.getElementById("nameInput").value.trim();
+      saveData("구간이 나뉘어진 함수의 정적분(우함수, 기함수)", playerName, score, elapsedTime);
+    }
+
+    async function saveData(game, name, score, elapsedTime) {
+      const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+      const requestData = {
+        game,
+        name,
+        score: parseInt(score, 10),
+        elapsedTime: parseInt(elapsedTime, 10)
+      };
+      try {
+        const response = await fetch(FUNCTION_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+        });
+        const responseData = await response.json();
+        if (response.ok) {
+          document.getElementById('response').innerText =
+            "성공: " + JSON.stringify(responseData, null, 2);
+        } else {
+          document.getElementById('response').innerText =
+            "오류: " + JSON.stringify(responseData, null, 2);
+        }
+      } catch (error) {
+        console.error('요청 실패:', error);
+        document.getElementById('response').innerText =
+          "네트워크 오류: " + error.message;
+      }
+    }
+  </script>
+</body>
+</html>
